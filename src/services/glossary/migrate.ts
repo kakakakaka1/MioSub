@@ -1,5 +1,28 @@
-import { type Glossary } from '@/types/glossary';
+import { type Glossary, type GlossaryItem } from '@/types/glossary';
 import { detectGlossaryLanguage } from '@/services/utils/language';
+import { validateGlossaryItem } from '@/services/glossary/validator';
+
+/**
+ * Drop malformed terms from a persisted glossary.
+ *
+ * Earlier versions persisted AI-extracted terms without type validation, so a
+ * corrupt `term` (e.g. a nested {term, translation, notes} object) can already
+ * live on disk and crashes every session it is merged/rendered (MIOSUB-76/6Y).
+ * This cleans such items on load so the fix is retroactive, not just forward.
+ */
+export function sanitizeGlossaryTerms(glossary: Glossary): {
+  glossary: Glossary;
+  changed: boolean;
+} {
+  const terms = Array.isArray(glossary.terms) ? glossary.terms : [];
+  const cleaned: GlossaryItem[] = [];
+  for (const t of terms) {
+    const valid = validateGlossaryItem(t);
+    if (valid) cleaned.push(valid);
+  }
+  const changed = cleaned.length !== terms.length;
+  return changed ? { glossary: { ...glossary, terms: cleaned }, changed } : { glossary, changed };
+}
 
 /**
  * Migrate a glossary to include targetLanguage if missing.
@@ -26,9 +49,22 @@ export function migrateAllGlossaries(
 ): { glossaries: Glossary[]; changed: boolean } {
   let changed = false;
   const result = glossaries.map((g) => {
-    if (g.targetLanguage) return g;
-    changed = true;
-    return migrateGlossaryLanguage(g, fallbackLanguage);
+    let current = g;
+
+    // 1. Sanitize malformed terms (runs regardless of targetLanguage state).
+    const sanitized = sanitizeGlossaryTerms(current);
+    if (sanitized.changed) {
+      current = sanitized.glossary;
+      changed = true;
+    }
+
+    // 2. Backfill targetLanguage for legacy glossaries.
+    if (!current.targetLanguage) {
+      current = migrateGlossaryLanguage(current, fallbackLanguage);
+      changed = true;
+    }
+
+    return current;
   });
   return { glossaries: result, changed };
 }

@@ -27,7 +27,9 @@ export const SPEAKER_COLORS = [
  * @returns Hex color code
  */
 export function getSpeakerColor(speaker: string): string {
-  if (!speaker) return '#FFFFFF'; // White for undefined (same as before)
+  // Guard against non-string speaker values (e.g. LLM diarization returning a
+  // number or object). Callers are typed `string`, but the data is untrusted.
+  if (!speaker || typeof speaker !== 'string') return '#FFFFFF'; // White for undefined
 
   // Extract number from "Speaker X" format
   const match = speaker.match(/\d+/);

@@ -10,6 +10,7 @@ import { getAudioSegment } from '@/services/audio/audioSourceHelper';
 import { mapInParallel } from '@/services/utils/concurrency';
 import { logger } from '@/services/utils/logger';
 import { createGlossarySchema } from '@/services/llm/schemas';
+import { validateGlossaryItem } from '@/services/glossary/validator';
 import {
   generateContentWithRetry,
   isRetryableError,
@@ -58,7 +59,7 @@ export const extractGlossaryFromAudio = async (
       const base64Audio = await blobToBase64(wavBlob);
       const prompt = GLOSSARY_EXTRACTION_PROMPT(genre, targetLanguage);
 
-      const terms = await generateContentWithRetry<GlossaryItem[]>(
+      const rawTerms = await generateContentWithRetry<GlossaryItem[]>(
         ai,
         {
           model: getStepModel('glossaryExtraction'),
@@ -76,6 +77,20 @@ export const extractGlossaryFromAudio = async (
         timeoutMs,
         'array' // Parse JSON as array
       );
+
+      // The schema declares term/translation as strings, but this is only enforced
+      // by the native Gemini endpoint. Third-party/OpenAI-compatible proxies ignore
+      // responseSchema and can return malformed shapes (nested objects, numbers).
+      // Validate here so downstream consumers (merger, autoConfirm, glossary UI)
+      // never receive a non-string term. (Fixes MIOSUB-76 / MIOSUB-6Y at the source.)
+      const terms = (Array.isArray(rawTerms) ? rawTerms : [])
+        .map(validateGlossaryItem)
+        .filter((t): t is GlossaryItem => t !== null);
+
+      const droppedCount = (Array.isArray(rawTerms) ? rawTerms.length : 0) - terms.length;
+      if (droppedCount > 0) {
+        logger.warn(`[Chunk ${index}] Dropped ${droppedCount} malformed glossary term(s)`);
+      }
 
       const termCount = terms.length;
       logger.info(`[Chunk ${index}] Extracted ${termCount} terms (Attempt ${attemptNumber})`);

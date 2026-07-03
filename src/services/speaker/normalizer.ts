@@ -53,7 +53,16 @@ export const normalizeSubtitles = (
     // 1. prefer 'speaker' field
     // 2. extract from 'original' text if needed (legacy format support)
     // 3. extract from 'translated' text if needed
-    let speakerName = sub.speaker;
+    // Coerce untrusted speaker values: LLM diarization (esp. via third-party
+    // proxies that ignore responseSchema) can return a number or object where a
+    // string is expected. Numbers are coerced to text; anything else falls
+    // through to the text-extraction fallback below. (Guards MIOSUB-78 / 79.)
+    let speakerName: string | undefined =
+      typeof sub.speaker === 'string'
+        ? sub.speaker
+        : typeof sub.speaker === 'number'
+          ? String(sub.speaker)
+          : undefined;
 
     // Fallback extraction if missing (common in legacy imports)
     if (!speakerName) {

@@ -7,6 +7,8 @@
  * - Color import mapping (parser.ts, useFileOperations.ts)
  */
 export const sanitizeSpeakerForStyle = (speaker: string): string => {
+  // Guard against non-string speaker values from untrusted LLM output.
+  if (typeof speaker !== 'string') return '';
   return speaker
     .replace(/[\s,;:[\](){}\\/&]+/g, '_') // Replace whitespace and special chars with underscore
     .replace(/_+/g, '_') // Collapse multiple underscores
