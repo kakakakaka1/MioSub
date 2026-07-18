@@ -13,7 +13,12 @@ import { v4 as uuidv4 } from 'uuid';
 import * as Sentry from '@sentry/electron/main';
 import { writeTempFile } from './fileUtils.ts';
 import { getBinaryPath } from '../utils/paths.ts';
-import { buildSpawnArgs, describeExitCode, ensureAsciiSafePath } from '../utils/shell.ts';
+import {
+  buildSpawnArgs,
+  describeExitCode,
+  ensureAsciiSafePath,
+  getAsciiSafeSpawnEnv,
+} from '../utils/shell.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
 import { detectBinaryVersion } from '../utils/version.ts';
 
@@ -172,6 +177,9 @@ export class CTCAlignerService {
         const proc = spawn(spawnConfig.command, spawnConfig.args, {
           stdio: ['ignore', 'pipe', 'pipe'], // Ignore stdin, capture stdout/stderr for logging
           cwd: path.dirname(config.alignerPath),
+          // ASCII-safe TEMP so the binary can create its own scratch files even
+          // under a non-ASCII (CJK) Windows username — see getAsciiSafeSpawnEnv.
+          env: getAsciiSafeSpawnEnv(),
           ...spawnConfig.options,
         });
         this.activeProcesses.set(jobId, proc);

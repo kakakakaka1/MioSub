@@ -9,6 +9,7 @@ import {
   buildSpawnArgs,
   describeExitCode,
   ensureAsciiSafePath,
+  getAsciiSafeSpawnEnv,
   isDllNotFoundExitCode,
 } from '../utils/shell.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
@@ -162,6 +163,8 @@ export class NativeVadService {
       const proc = spawn(command, spawnArgs, {
         ...spawnOptions,
         windowsHide: true,
+        // ASCII-safe TEMP for non-ASCII (CJK) Windows usernames — see getAsciiSafeSpawnEnv.
+        env: getAsciiSafeSpawnEnv(),
       });
 
       const processId = `vad-${Date.now()}-${++this.processSeq}`;

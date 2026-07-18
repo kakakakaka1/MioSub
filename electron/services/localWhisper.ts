@@ -10,6 +10,7 @@ import {
   buildSpawnArgs,
   describeExitCode,
   ensureAsciiSafePath,
+  getAsciiSafeSpawnEnv,
   getAsciiSafeTempPath,
   isDllNotFoundExitCode,
 } from '../utils/shell.ts';
@@ -204,6 +205,8 @@ export class LocalWhisperService {
       const spawnConfig = buildSpawnArgs(binaryPath, args);
       const proc = spawn(spawnConfig.command, spawnConfig.args, {
         windowsHide: true,
+        // ASCII-safe TEMP for non-ASCII (CJK) Windows usernames — see getAsciiSafeSpawnEnv.
+        env: getAsciiSafeSpawnEnv(),
         ...spawnConfig.options,
       });
       this.activeProcesses.set(jobId, proc);

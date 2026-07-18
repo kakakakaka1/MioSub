@@ -137,6 +137,35 @@ function hasNonAscii(str: string): boolean {
 }
 
 /**
+ * Build a child-process environment whose TEMP/TMP point at an ASCII-safe
+ * directory on Windows when the profile temp path contains non-ASCII characters
+ * (e.g. a Chinese username: C:\Users\张三\AppData\Local\Temp).
+ *
+ * ensureAsciiSafePath only aliases the paths WE pass as arguments. Native tools
+ * that create their OWN scratch files under %TEMP% (e.g. bs-roformer's
+ * `bs_roformer_segments_*` segment dirs) otherwise fail with
+ * "Failed to open file for writing" because the CRT mangles the inherited path.
+ * Pass the result as `spawn(cmd, args, { env })`.
+ *
+ * Returns the base env unchanged on non-Windows or when the temp path is
+ * already ASCII-safe, so it is always safe to call.
+ */
+export function getAsciiSafeSpawnEnv(baseEnv: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  if (process.platform !== 'win32') return baseEnv;
+  const tmp = baseEnv.TEMP || baseEnv.TMP || os.tmpdir();
+  if (!hasNonAscii(tmp)) return baseEnv;
+
+  const safeDir = getAsciiSafeTempDir();
+  try {
+    fs.mkdirSync(safeDir, { recursive: true });
+  } catch {
+    // Best-effort; if we cannot create it, fall through with the override
+    // anyway — the tool will surface its own error.
+  }
+  return { ...baseEnv, TEMP: safeDir, TMP: safeDir };
+}
+
+/**
  * Check if a path contains characters that FFmpeg interprets as special syntax.
  * - `[` `]` — glob/sequence patterns (e.g., file[0-9].mp4)
  * - `%` — image sequence numbering (e.g., frame%03d.png)

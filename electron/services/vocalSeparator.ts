@@ -9,6 +9,7 @@ import {
   buildSpawnArgs,
   describeExitCode,
   ensureAsciiSafePath,
+  getAsciiSafeSpawnEnv,
   getAsciiSafeTempPath,
 } from '../utils/shell.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
@@ -129,7 +130,14 @@ export class VocalSeparator {
       console.log(
         `[VocalSeparator] Spawning: ${command} ${spawnArgs.map((a) => `"${a}"`).join(' ')}`
       );
-      const proc = spawn(command, spawnArgs, { ...spawnOptions, windowsHide: true });
+      // Point the child's TEMP/TMP at an ASCII-safe dir so bs-roformer can
+      // create its own `bs_roformer_segments_*` scratch files even when the
+      // Windows username is non-ASCII (Chinese/Japanese/Korean).
+      const proc = spawn(command, spawnArgs, {
+        ...spawnOptions,
+        windowsHide: true,
+        env: getAsciiSafeSpawnEnv(),
+      });
       const processId = `vocal-${Date.now()}-${++this.processSeq}`;
       this.activeProcesses.set(processId, proc);
 
