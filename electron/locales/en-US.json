@@ -51,7 +51,8 @@
     "parseVideoFailed": "Failed to parse video info: invalid response format",
     "ytdlpTimeout": "yt-dlp execution timeout ({{seconds}}s)",
     "notAFile": "Selected path is not a file",
-    "fileNotAccessible": "Cannot access file"
+    "fileNotAccessible": "Cannot access file",
+    "missingVcRuntime": "Failed to start {{binary}}: the Microsoft Visual C++ runtime is missing. Download and install https://aka.ms/vs/17/release/vc_redist.x64.exe and try again"
   },
   "ytdlp": {
     "playlistNotSupported": "Playlists are not supported, please use a single video URL",

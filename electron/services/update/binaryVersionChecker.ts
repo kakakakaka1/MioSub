@@ -2,7 +2,13 @@ import * as Sentry from '@sentry/electron/main';
 import fs from 'fs';
 import path from 'path';
 import { getBinaryPath } from '../../utils/paths.ts';
-import { compareVersions, isMissingSentinel, isRealVersion } from '../../utils/version.ts';
+import {
+  compareVersions,
+  isMissingRuntimeSentinel,
+  isMissingSentinel,
+  isNoVersionFlagSentinel,
+  isRealVersion,
+} from '../../utils/version.ts';
 import { ctcAlignerService } from '../ctcAligner.ts';
 import { ytDlpService } from '../ytdlp.ts';
 import { localWhisperService } from '../localWhisper.ts';
@@ -105,6 +111,8 @@ export async function checkBinaryUpdate(
       const currentParsed = parseAlignerVersion(current);
       if (isMissingSentinel(current)) {
         result.hasUpdate = true; // Binary missing — force download.
+      } else if (isMissingRuntimeSentinel(current)) {
+        result.hasUpdate = true; // Can't load (0xC0000135) — a fresh download may fix it.
       } else if (!isRealVersion(currentParsed)) {
         result.hasUpdate = false; // Probe failed (timeout/unknown) — don't nag.
       } else {
@@ -204,6 +212,16 @@ export async function checkBinaryUpdate(
 
       if (isMissingSentinel(current)) {
         result.hasUpdate = true; // Binary missing — force download.
+      } else if (isMissingRuntimeSentinel(current)) {
+        // Binary can't load (0xC0000135, no VC++ runtime). Deterministic, not
+        // a transient probe failure — the static-CRT build fixes it, so offer
+        // the update even though the current version is unreadable (MIOSUB-7J).
+        result.hasUpdate = true;
+      } else if (isNoVersionFlagSentinel(current)) {
+        // Binary runs but predates the -v/--version flag (v1.8.7-custom lost
+        // the patch). Deterministic — without this these users probe 'unknown'
+        // forever and are never offered the release that restores the flag.
+        result.hasUpdate = true;
       } else if (!isRealVersion(current)) {
         result.hasUpdate = false; // Probe failed (timeout/unknown) — don't nag.
       } else {
@@ -234,6 +252,8 @@ export async function checkBinaryUpdate(
       result.latest = tagName.replace(/^v/, '');
       if (isMissingSentinel(current)) {
         result.hasUpdate = true; // Binary missing — force download.
+      } else if (isMissingRuntimeSentinel(current)) {
+        result.hasUpdate = true; // Can't load (0xC0000135) — a fresh download may fix it.
       } else if (!isRealVersion(current)) {
         result.hasUpdate = false; // Probe failed (timeout/unknown) — don't nag.
       } else {

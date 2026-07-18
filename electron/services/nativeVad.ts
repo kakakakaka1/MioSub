@@ -5,7 +5,12 @@ import { spawn, type ChildProcess } from 'child_process';
 import * as Sentry from '@sentry/electron/main';
 import { t } from '../i18n.ts';
 import { getBinaryPath } from '../utils/paths.ts';
-import { buildSpawnArgs, ensureAsciiSafePath } from '../utils/shell.ts';
+import {
+  buildSpawnArgs,
+  describeExitCode,
+  ensureAsciiSafePath,
+  isDllNotFoundExitCode,
+} from '../utils/shell.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
 import { extractAudioFromVideo, cleanupTempAudio } from './ffmpegAudioExtractor.ts';
 
@@ -213,10 +218,18 @@ export class NativeVadService {
       }
 
       if (code !== 0) {
-        console.error(`[NativeVad] Process exited with code ${code}`);
+        const codeDesc = describeExitCode(code);
+        console.error(
+          `[NativeVad] Process exited with code ${code}${codeDesc ? ` (${codeDesc})` : ''}`
+        );
         console.error(`[NativeVad] stderr: ${stderr}`);
+        if (isDllNotFoundExitCode(code)) {
+          throw new Error(t('error.missingVcRuntime', { binary: 'whisper-vad-speech-segments' }));
+        }
         // Process failure should be reported to Sentry
-        throw new Error(`VAD process failed (exit code ${code}): ${stderr}`);
+        throw new Error(
+          `VAD process failed (exit code ${code}${codeDesc ? ` (${codeDesc})` : ''}): ${stderr}`
+        );
       }
 
       // Parse output

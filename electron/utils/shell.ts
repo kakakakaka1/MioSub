@@ -8,6 +8,51 @@ import * as os from 'os';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
+ * Windows NTSTATUS 0xC0000135 (STATUS_DLL_NOT_FOUND) as the unsigned decimal
+ * Node reports in `exit code` / `spawnSync().status`. The loader fails before
+ * main() runs, so stderr is always empty. Typical cause: the binary links the
+ * dynamic MSVC runtime (msvcp140.dll / vcruntime140*.dll) and the machine has
+ * no VC++ Redistributable installed (fresh Windows installs — MIOSUB-7J/7K).
+ */
+export const STATUS_DLL_NOT_FOUND = 0xc0000135; // 3221225781
+
+/** True when a child process exit code means a dependent DLL failed to load. */
+export function isDllNotFoundExitCode(code: number | null | undefined): boolean {
+  return process.platform === 'win32' && code === STATUS_DLL_NOT_FOUND;
+}
+
+/**
+ * Windows NTSTATUS exit codes we have seen from native child processes in the
+ * wild, with a short hint of the usual cause. Every entry corresponds to at
+ * least one investigated Sentry issue (see docs/sentry-investigations).
+ */
+const NTSTATUS_HINTS: Record<number, string> = {
+  0xc0000005: 'STATUS_ACCESS_VIOLATION (crash: bad memory access / incompatible build)',
+  0xc000001d: 'STATUS_ILLEGAL_INSTRUCTION (CPU lacks required instruction set, e.g. AVX2)',
+  0xc00000fd: 'STATUS_STACK_OVERFLOW',
+  0xc0000135: 'STATUS_DLL_NOT_FOUND (missing dependent DLL, e.g. VC++ runtime)',
+  0xc0000142: 'STATUS_DLL_INIT_FAILED (a dependent DLL failed to initialize)',
+  0xc0000374: 'STATUS_HEAP_CORRUPTION',
+  0xc0000409: 'STATUS_STACK_BUFFER_OVERRUN (fail-fast abort)',
+  0xc000041d: 'STATUS_FATAL_USER_CALLBACK_EXCEPTION (crash during callback, e.g. GPU init)',
+};
+
+/**
+ * Human-readable description of an abnormal Windows exit code, e.g.
+ * "0xC0000135 STATUS_DLL_NOT_FOUND (missing dependent DLL, e.g. VC++ runtime)".
+ * Returns null for normal exit codes (< 0x40000000), non-Windows platforms,
+ * and null/undefined codes — callers can append it conditionally.
+ */
+export function describeExitCode(code: number | null | undefined): string | null {
+  if (code == null || process.platform !== 'win32') return null;
+  const unsigned = code >>> 0;
+  if (unsigned < 0x40000000) return null;
+  const hex = `0x${unsigned.toString(16).toUpperCase().padStart(8, '0')}`;
+  const hint = NTSTATUS_HINTS[unsigned];
+  return hint ? `${hex} ${hint}` : hex;
+}
+
+/**
  * Escape shell arguments for Windows CMD when using shell: true in spawn().
  * Wraps arguments containing special characters in double quotes
  * and escapes internal double quotes by doubling them.

@@ -51,7 +51,8 @@
     "parseVideoFailed": "動画情報の解析に失敗：無効なレスポンス形式",
     "ytdlpTimeout": "yt-dlp 実行タイムアウト ({{seconds}}秒)",
     "notAFile": "選択したパスはファイルではありません",
-    "fileNotAccessible": "ファイルにアクセスできません"
+    "fileNotAccessible": "ファイルにアクセスできません",
+    "missingVcRuntime": "{{binary}} を起動できません：Microsoft Visual C++ ランタイムが見つかりません。https://aka.ms/vs/17/release/vc_redist.x64.exe をインストールしてから再試行してください"
   },
   "ytdlp": {
     "playlistNotSupported": "プレイリストのダウンロードには対応していません。単一の動画リンクを使用してください",

@@ -6,7 +6,14 @@ import { v4 as uuidv4 } from 'uuid';
 import * as Sentry from '@sentry/electron/main';
 import { t } from '../i18n.ts';
 import { getWritableBinDir } from '../utils/paths.ts';
-import { buildSpawnArgs, ensureAsciiSafePath, getAsciiSafeTempPath } from '../utils/shell.ts';
+import {
+  buildSpawnArgs,
+  describeExitCode,
+  ensureAsciiSafePath,
+  getAsciiSafeTempPath,
+  isDllNotFoundExitCode,
+} from '../utils/shell.ts';
+import { isRealVersion } from '../utils/version.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
 
 export interface SubtitleItem {
@@ -252,11 +259,20 @@ export class LocalWhisperService {
         }
 
         if (code !== 0) {
-          const errorMsg = `Process exited with code ${code}`;
+          const codeDesc = describeExitCode(code);
+          const errorMsg = `Process exited with code ${code}${codeDesc ? ` (${codeDesc})` : ''}`;
           console.error(`[LocalWhisper] ${errorMsg}`);
           if (onLog) onLog(`[ERROR] [LocalWhisper] Error: ${errorMsg}`);
           if (onLog) onLog(`[ERROR] [LocalWhisper] Stderr: ${stderr}`);
-          reject(new Error(`Whisper CLI failed with code ${code}: ${stderr}`));
+          if (isDllNotFoundExitCode(code)) {
+            reject(new Error(t('error.missingVcRuntime', { binary: 'whisper-cli' })));
+            return;
+          }
+          reject(
+            new Error(
+              `Whisper CLI failed with code ${code}${codeDesc ? ` (${codeDesc})` : ''}: ${stderr}`
+            )
+          );
           return;
         }
 
@@ -492,9 +508,12 @@ export class LocalWhisperService {
       helpOutput,
       diag: {
         versionExitCode: versionResult.status,
+        versionExitCodeDescription: describeExitCode(versionResult.status),
         versionSignal: versionResult.signal,
         versionError: versionResult.error?.message,
+        versionOutput: versionOutput.trim().slice(0, 1000),
         helpExitCode: result.status,
+        helpExitCodeDescription: describeExitCode(result.status),
         helpSignal: result.signal,
         helpError: result.error?.message,
       },
@@ -527,30 +546,61 @@ export class LocalWhisperService {
       // Custom builds are skipped entirely: they often don't embed a version
       // string and produced the bulk of the original MIOSUB-37 volume. 'unknown'
       // still works correctly and the About tab shows the source as "Custom".
+      let missingRuntime = false;
+      let noVersionFlag = false;
       if (!probe.version && info.source !== 'Custom') {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         const retry = this.probeWhisperBinary(info.path);
         if (retry.version) {
           probe = retry; // cold-start transient — recovered, no Sentry noise
         } else {
+          // 0xC0000135 is deterministic (loader can't find msvcp140/vcruntime140),
+          // not a transient parse failure — surface it as its own sentinel so the
+          // update checker can force-offer a static-CRT replacement binary.
+          missingRuntime =
+            isDllNotFoundExitCode(retry.diag.versionExitCode as number | null) &&
+            isDllNotFoundExitCode(retry.diag.helpExitCode as number | null);
+          // Binary runs fine (-h exits 0 with output) but emits no version
+          // string — it predates the -v/--version flag (e.g. v1.8.7-custom
+          // lost the patch). Also deterministic: without this sentinel these
+          // users probe 'unknown' forever and are never offered the update.
+          noVersionFlag =
+            !missingRuntime && retry.diag.helpExitCode === 0 && retry.helpOutput.trim().length > 0;
           console.warn(
             `[LocalWhisper] Version parse failed (2 attempts), output: ${retry.helpOutput.trim().slice(0, 200)}`
           );
-          Sentry.captureMessage('Whisper version parse failed', {
-            level: 'warning',
-            extra: {
-              output: retry.helpOutput.trim().slice(0, 500),
-              attempt1: probe.diag,
-              attempt2: retry.diag,
-              binaryPath: info.path,
-              source: info.source,
-            },
-          });
+          Sentry.captureMessage(
+            missingRuntime
+              ? 'Whisper binary cannot load: VC++ runtime missing'
+              : 'Whisper version parse failed',
+            {
+              level: 'warning',
+              tags: {
+                probe_reason: missingRuntime
+                  ? 'dll-not-found'
+                  : noVersionFlag
+                    ? 'no-version-flag'
+                    : 'no-version-string',
+                version_exit_code: String(retry.diag.versionExitCode),
+              },
+              extra: {
+                output: retry.helpOutput.trim().slice(0, 1000),
+                attempt1: probe.diag,
+                attempt2: retry.diag,
+                binaryPath: info.path,
+                source: info.source,
+              },
+            }
+          );
           probe = retry; // use latest help output for GPU detection
         }
       }
 
-      details.version = probe.version ?? 'unknown';
+      details.version = missingRuntime
+        ? 'missing-runtime'
+        : noVersionFlag
+          ? 'no-version-flag'
+          : (probe.version ?? 'unknown');
 
       // Detect GPU support
       // Search for specific GPU acceleration library names in build info
@@ -576,10 +626,11 @@ export class LocalWhisperService {
       Sentry.captureException(e, { tags: { action: 'get-whisper-details' } });
     }
 
-    // Only cache when version probing actually succeeded — a transient
-    // 'unknown' (custom build, timeout, parse failure) must not be locked
-    // in for the rest of the process lifetime.
-    if (details.version !== 'unknown' && details.version !== 'Not found') {
+    // Only cache when version probing actually succeeded — a sentinel
+    // ('unknown', 'Not found', 'missing-runtime', ...) must not be locked
+    // in for the rest of the process lifetime: the user may fix the cause
+    // (e.g. install the VC++ runtime) while the app is running.
+    if (isRealVersion(details.version)) {
       this.cachedDetails.set(info.path, details);
     }
     return details;

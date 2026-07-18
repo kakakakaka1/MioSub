@@ -1,14 +1,21 @@
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 import * as Sentry from '@sentry/electron/main';
-import { buildSpawnArgs } from './shell.ts';
+import { buildSpawnArgs, describeExitCode, isDllNotFoundExitCode } from './shell.ts';
 
 /**
  * Sentinel values returned by binary version detection when a real version
  * string is unavailable. Shared between systemInfoService and preflightCheck
  * to keep the list in sync.
  */
-export const VERSION_SENTINELS = new Set(['not found', 'error', 'unknown', 'timeout']);
+export const VERSION_SENTINELS = new Set([
+  'not found',
+  'error',
+  'unknown',
+  'timeout',
+  'missing-runtime',
+  'no-version-flag',
+]);
 
 /** Check whether a version string is a real version (not a sentinel). */
 export function isRealVersion(v: string | undefined): v is string {
@@ -23,6 +30,29 @@ export function isRealVersion(v: string | undefined): v is string {
  */
 export function isMissingSentinel(v: string | undefined): boolean {
   return !!v && v.toLowerCase() === 'not found';
+}
+
+/**
+ * True for the "binary exists but its loader dependencies are missing"
+ * sentinel (Windows 0xC0000135 — no VC++ runtime installed). Unlike
+ * 'unknown'/'timeout' this failure is deterministic, and a replacement
+ * binary built with the static CRT fixes it — so update flows should
+ * force-offer the download, same as for a missing binary (MIOSUB-7J).
+ */
+export function isMissingRuntimeSentinel(v: string | undefined): boolean {
+  return !!v && v.toLowerCase() === 'missing-runtime';
+}
+
+/**
+ * True for the "binary runs fine but emits no version string" sentinel.
+ * Deterministic (not a cold-start transient): the binary predates the
+ * -v/--version flag — e.g. whisper.cpp v1.8.7-custom silently lost the custom
+ * flag patch, so users who binary-updated to it probe as unknown forever and
+ * would otherwise never be offered the fixed release. Update flows should
+ * force-offer the download (MIOSUB-7J investigation, MIOSUB-37 tail).
+ */
+export function isNoVersionFlagSentinel(v: string | undefined): boolean {
+  return !!v && v.toLowerCase() === 'no-version-flag';
 }
 
 /** Matches a simple semver-like string: optional "v" prefix + dot-separated digits. */
@@ -100,7 +130,8 @@ export async function detectBinaryVersion(opts: DetectBinaryVersionOptions): Pro
         ...spawnConfig.options,
       });
 
-      let output = '';
+      let stdout = '';
+      let stderr = '';
       // Tracks whether the timeout fired and we killed the process. The
       // close handler must skip Sentry capture in that case — empty output
       // after a kill is *not* a parse failure worth reporting; the 'Timeout'
@@ -108,14 +139,14 @@ export async function detectBinaryVersion(opts: DetectBinaryVersionOptions): Pro
       let timedOut = false;
 
       proc.stdout.on('data', (d) => {
-        output += d.toString();
+        stdout += d.toString();
       });
       proc.stderr?.on('data', (d) => {
-        output += d.toString();
+        stderr += d.toString();
       });
 
-      proc.on('close', () => {
-        const trimmed = output.trim();
+      proc.on('close', (code, sig) => {
+        const trimmed = (stdout + stderr).trim();
         const match = trimmed.match(parseRegex);
         if (match) {
           versionCache.set(binaryPath, match[1]);
@@ -123,14 +154,61 @@ export async function detectBinaryVersion(opts: DetectBinaryVersionOptions): Pro
           return;
         }
 
-        // Skip Sentry noise from two known-benign cases:
-        //   1. We killed the process via timeout — 'Timeout' was already resolved.
-        //   2. The process exited cleanly with empty output — no diagnostic value.
-        if (!timedOut && trimmed.length > 0) {
-          console.warn(`[${label}] Version parse failed, output: ${trimmed.slice(0, 200)}`);
+        // We killed the process via timeout — 'Timeout' was already resolved,
+        // and empty output after a kill is not a parse failure worth reporting.
+        if (timedOut) {
+          resolve('unknown');
+          return;
+        }
+
+        // Classify the failure so Sentry issues are self-explanatory without
+        // opening individual events (tags are aggregatable in the issue view):
+        //   dll-not-found     binary can't load (0xC0000135, e.g. no VC++ runtime)
+        //   crashed           abnormal Windows exit (NTSTATUS) or killed by signal
+        //   nonzero-exit      ran but returned an error code
+        //   no-version-string ran fine but output didn't match parseRegex
+        //   empty-output      exited cleanly with no output (known-benign, skip)
+        const codeDesc = describeExitCode(code);
+        const spawnDiag = {
+          binaryPath,
+          command: spawnConfig.command,
+          args: spawnConfig.args,
+          exitCode: code,
+          exitCodeDescription: codeDesc,
+          signal: sig,
+          stdout: stdout.trim().slice(0, 1000),
+          stderr: stderr.trim().slice(0, 1000),
+        };
+        if (isDllNotFoundExitCode(code)) {
+          console.warn(`[${label}] Binary cannot load: VC++ runtime missing (${codeDesc})`);
+          Sentry.captureMessage(`${label} binary cannot load: VC++ runtime missing`, {
+            level: 'warning',
+            tags: { probe_reason: 'dll-not-found', exit_code: String(code) },
+            extra: spawnDiag,
+          });
+          resolve('missing-runtime');
+          return;
+        }
+
+        const reason =
+          codeDesc || sig
+            ? 'crashed'
+            : code !== 0
+              ? 'nonzero-exit'
+              : trimmed.length > 0
+                ? 'no-version-string'
+                : 'empty-output';
+
+        // Clean exit + empty output has no diagnostic value (e.g. MIOSUB-38) —
+        // everything else is captured with full spawn diagnostics.
+        if (reason !== 'empty-output') {
+          console.warn(
+            `[${label}] Version probe failed (${reason}, code=${code}${sig ? `, signal=${sig}` : ''}), output: ${trimmed.slice(0, 200)}`
+          );
           Sentry.captureMessage(`${label} version parse failed`, {
             level: 'warning',
-            extra: { output: trimmed.slice(0, 500), binaryPath },
+            tags: { probe_reason: reason, exit_code: String(code) },
+            extra: spawnDiag,
           });
         }
         resolve('unknown');
@@ -138,7 +216,10 @@ export async function detectBinaryVersion(opts: DetectBinaryVersionOptions): Pro
 
       proc.on('error', (err) => {
         console.warn(`[${label}] Failed to get version: ${err.message}`);
-        Sentry.captureException(err, { tags: { action: `${label.toLowerCase()}-version` } });
+        Sentry.captureException(err, {
+          tags: { action: `${label.toLowerCase()}-version`, probe_reason: 'spawn-error' },
+          extra: { binaryPath, command: spawnConfig.command, args: spawnConfig.args },
+        });
         resolve('Error');
       });
 

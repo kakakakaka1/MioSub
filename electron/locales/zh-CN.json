@@ -51,7 +51,8 @@
     "parseVideoFailed": "解析视频信息失败：无效的响应格式",
     "ytdlpTimeout": "yt-dlp 执行超时 ({{seconds}}秒)",
     "notAFile": "所选路径不是文件",
-    "fileNotAccessible": "无法访问文件"
+    "fileNotAccessible": "无法访问文件",
+    "missingVcRuntime": "无法启动 {{binary}}：系统缺少 Microsoft Visual C++ 运行库。请下载安装 https://aka.ms/vs/17/release/vc_redist.x64.exe 后重试"
   },
   "ytdlp": {
     "playlistNotSupported": "暂不支持下载播放列表，请使用单个视频链接",
