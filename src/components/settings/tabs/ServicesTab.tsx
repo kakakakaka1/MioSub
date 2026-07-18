@@ -8,6 +8,7 @@ import { OptionButton } from '@/components/ui/OptionButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { LocalWhisperSettings } from '@/components/settings/LocalWhisperSettings';
 import { GeminiModelOverridesModal } from '@/components/settings/GeminiModelOverridesModal';
+import { sanitizeApiKey, sanitizeEndpoint, isValidEndpoint } from '@/utils/credentialInput';
 import type { ServicesTabProps } from './types';
 
 export const ServicesTab: React.FC<ServicesTabProps> = ({
@@ -35,7 +36,7 @@ export const ServicesTab: React.FC<ServicesTabProps> = ({
             <div className="relative">
               <PasswordInput
                 value={settings.geminiKey}
-                onChange={(e) => updateSetting('geminiKey', e.target.value.trim())}
+                onChange={(e) => updateSetting('geminiKey', sanitizeApiKey(e.target.value))}
                 placeholder={t('services.translation.geminiKeyPlaceholder')}
               />
             </div>
@@ -53,13 +54,19 @@ export const ServicesTab: React.FC<ServicesTabProps> = ({
             </label>
             <InputWithReset
               value={settings.geminiEndpoint || ''}
-              onChange={(val) => updateSetting('geminiEndpoint', val)}
+              onChange={(val) => updateSetting('geminiEndpoint', sanitizeEndpoint(val))}
               onReset={() => updateSetting('geminiEndpoint', undefined)}
               placeholder={t('services.translation.geminiEndpointPlaceholder')}
             />
-            <p className="text-xs text-slate-500 mt-1">
-              {t('services.translation.geminiEndpointHint')}
-            </p>
+            {!isValidEndpoint(settings.geminiEndpoint || '') ? (
+              <p className="text-xs text-red-500 mt-1">
+                {t('services.translation.endpointInvalid')}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 mt-1">
+                {t('services.translation.geminiEndpointHint')}
+              </p>
+            )}
           </div>
           {/* Custom per-step Gemini model names (Gemini-only) */}
           <div>
@@ -160,7 +167,7 @@ const OpenAISettings: React.FC<{
       <div className="relative">
         <PasswordInput
           value={settings.openaiKey}
-          onChange={(e) => updateSetting('openaiKey', e.target.value.trim())}
+          onChange={(e) => updateSetting('openaiKey', sanitizeApiKey(e.target.value))}
           placeholder={t('services.transcription.openaiKeyPlaceholder')}
         />
       </div>
@@ -178,13 +185,17 @@ const OpenAISettings: React.FC<{
       </label>
       <InputWithReset
         value={settings.openaiEndpoint || ''}
-        onChange={(val) => updateSetting('openaiEndpoint', val)}
+        onChange={(val) => updateSetting('openaiEndpoint', sanitizeEndpoint(val))}
         onReset={() => updateSetting('openaiEndpoint', undefined)}
         placeholder={t('services.transcription.openaiEndpointPlaceholder')}
       />
-      <p className="text-xs text-slate-500 mt-1">
-        {t('services.transcription.openaiEndpointHint')}
-      </p>
+      {!isValidEndpoint(settings.openaiEndpoint || '') ? (
+        <p className="text-xs text-red-500 mt-1">{t('services.translation.endpointInvalid')}</p>
+      ) : (
+        <p className="text-xs text-slate-500 mt-1">
+          {t('services.transcription.openaiEndpointHint')}
+        </p>
+      )}
     </div>
   </div>
 );

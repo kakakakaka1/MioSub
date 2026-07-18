@@ -18,6 +18,21 @@ import i18n from '@/i18n';
 import { findModel, parseCapabilities, type ModelCapabilities } from '../ModelCapabilities';
 
 /**
+ * Normalize a user-supplied Gemini base URL.
+ *
+ * The @google/genai SDK appends the API version segment (`/v1beta/models/...`)
+ * to `httpOptions.baseUrl` itself. Users routinely paste a relay endpoint that
+ * already ends in `/v1` or `/v1beta`, producing a doubled path like
+ * `POST /v1/v1beta/models/...` that relays reject as an invalid URL (the single
+ * largest configuration-related refinement failure in the 2026-06 report).
+ * Strip any trailing slash and a trailing version segment so the SDK can build
+ * the path correctly.
+ */
+export function normalizeGeminiBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, '').replace(/\/v1(beta)?$/i, '');
+}
+
+/**
  * Get max output tokens - uses modelCaps if available, otherwise fallback
  */
 function getMaxOutputTokens(modelCaps: ModelCapabilities | null): number {
@@ -88,7 +103,7 @@ export class GeminiAdapter extends BaseAdapter {
     };
 
     if (config.baseUrl) {
-      clientOptions.baseUrl = config.baseUrl;
+      clientOptions.baseUrl = normalizeGeminiBaseUrl(config.baseUrl);
     }
 
     this.ai = new GoogleGenAI(clientOptions);

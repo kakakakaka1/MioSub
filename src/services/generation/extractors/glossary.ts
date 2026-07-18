@@ -18,6 +18,7 @@ import {
 } from '@/services/llm/providers/gemini';
 import { GLOSSARY_EXTRACTION_PROMPT } from '@/services/llm/prompts';
 import { getStepModel, buildStepConfig } from '@/config';
+import { normalizeGeminiBaseUrl } from '@/services/llm/adapters/GeminiAdapter';
 
 export const extractGlossaryFromAudio = async (
   ai: GoogleGenAI,
@@ -232,7 +233,7 @@ export const retryGlossaryExtraction = async (
   const ai = new GoogleGenAI({
     apiKey,
     httpOptions: {
-      ...(endpoint ? { baseUrl: endpoint } : {}),
+      ...(endpoint ? { baseUrl: normalizeGeminiBaseUrl(endpoint) } : {}),
       timeout: timeout || 600000,
     },
   });

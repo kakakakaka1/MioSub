@@ -65,7 +65,8 @@
       "geminiKeyHint": "翻译使用 <strong>Gemini Flash 系列模型</strong>，术语提取和润色使用 <strong>Gemini Pro 系列模型</strong>。",
       "geminiEndpoint": "Gemini 端点 (可选)",
       "geminiEndpointPlaceholder": "https://generativelanguage.googleapis.com",
-      "geminiEndpointHint": "自定义 API 端点，支持使用代理或第三方网关。"
+      "geminiEndpointHint": "自定义 API 端点，支持使用代理或第三方网关。",
+      "endpointInvalid": "端点格式无效，请填写完整的 http:// 或 https:// 地址（勿包含空格或多余文本）。"
     },
     "transcription": {
       "title": "语音识别",

@@ -65,7 +65,8 @@
       "geminiKeyHint": "Uses <strong>Gemini Flash</strong> for primary translation, and <strong>Gemini Pro</strong> for advanced tasks like glossary extraction and proofreading.",
       "geminiEndpoint": "Gemini Endpoint (Optional)",
       "geminiEndpointPlaceholder": "https://generativelanguage.googleapis.com",
-      "geminiEndpointHint": "Set a custom base URL. Useful for proxies or API gateways."
+      "geminiEndpointHint": "Set a custom base URL. Useful for proxies or API gateways.",
+      "endpointInvalid": "Invalid endpoint. Enter a complete http:// or https:// URL with no spaces or extra text."
     },
     "transcription": {
       "title": "Speech Recognition",

@@ -65,7 +65,8 @@
       "geminiKeyHint": "翻訳には <strong>Gemini Flash</strong>、用語抽出・校正には <strong>Gemini Pro</strong> を使用します。",
       "geminiEndpoint": "Gemini エンドポイント（オプション）",
       "geminiEndpointPlaceholder": "https://generativelanguage.googleapis.com",
-      "geminiEndpointHint": "カスタムエンドポイントを設定できます。プロキシやAPIゲートウェイに対応しています。"
+      "geminiEndpointHint": "カスタムエンドポイントを設定できます。プロキシやAPIゲートウェイに対応しています。",
+      "endpointInvalid": "エンドポイントの形式が無効です。空白や余分なテキストを含まない完全な http:// または https:// の URL を入力してください。"
     },
     "transcription": {
       "title": "音声認識",
