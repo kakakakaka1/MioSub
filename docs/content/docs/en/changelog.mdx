@@ -5,6 +5,14 @@ description: "All notable changes to MioSub"
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.9] - 2026-07-19
+
+### Fixes
+
+- **Vocal Separation / Local Whisper**: Fix bundled native tools (BS-Roformer vocal separation, whisper.cpp, CTC aligner, VAD) failing with "Failed to open file for writing" for users whose Windows username contains non-ASCII characters (Chinese, Japanese, Korean). These tools create their own scratch files under `%TEMP%`, whose path was corrupted by the CJK username; MioSub now points the child process's temp directory to an ASCII-safe location.
+- **Settings**: Sanitize the API key inputs so a key pasted together with surrounding text (a note, a full-width space) no longer crashes generation with "String contains non ISO-8859-1 code point".
+- **Settings**: Sanitize and validate the custom API endpoint inputs. Stray whitespace and a trailing `/v1` are now handled automatically (the latter was the single largest cause of translation/refinement failures on third-party proxies, producing a malformed `/v1/v1beta/...` request URL), and an invalid endpoint shows an inline warning.
+
 ## [3.1.8] - 2026-07-18
 
 ### Fixes
