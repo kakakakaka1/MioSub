@@ -5,6 +5,14 @@ description: "All notable changes to MioSub"
 
 All notable changes to this project will be documented in this file.
 
+## [3.1.8] - 2026-07-18
+
+### Fixes
+
+- **Whisper (Local)**: Fix all local transcription and VAD failing with cryptic exit code 3221225781 on machines without the Microsoft Visual C++ runtime (typically brand-new PCs). The bundled whisper.cpp binaries (v1.8.8) are now built with the static runtime and no longer require the VC++ Redistributable. If a binary still cannot load, MioSub shows an actionable message with the vc_redist download link instead of a raw exit code, and the binary updater now offers a replacement download for this case instead of staying silent (Fixes MIOSUB-7J, MIOSUB-7K).
+- **Whisper (Local)**: Restore the `--version` flag in the bundled whisper.cpp build (lost in v1.8.7), so version detection and update checks work again. Binaries that run fine but cannot report a version are now offered an update instead of being stuck on "unknown" forever.
+- **Pipeline**: Validate LLM JSON field types at the parse boundary — malformed glossary terms (nested objects) and non-string speaker names returned by third-party proxies no longer crash the glossary merger, the editor, or subtitle export; corrupted glossaries persisted by earlier versions are cleaned up on load (Fixes MIOSUB-76, MIOSUB-6Y, MIOSUB-78, MIOSUB-79).
+
 ## [3.1.7] - 2026-06-05
 
 ### Fixes
