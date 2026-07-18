@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import * as Sentry from '@sentry/electron/main';
 import { writeTempFile } from './fileUtils.ts';
 import { getBinaryPath } from '../utils/paths.ts';
-import { buildSpawnArgs, ensureAsciiSafePath } from '../utils/shell.ts';
+import { buildSpawnArgs, describeExitCode, ensureAsciiSafePath } from '../utils/shell.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
 import { detectBinaryVersion } from '../utils/version.ts';
 
@@ -203,16 +203,18 @@ export class CTCAlignerService {
 
           if (code !== 0) {
             const signalInfo = signal ? ` (signal: ${signal})` : '';
-            console.error(`[CTCAligner] Process exited with code ${code}${signalInfo}`);
+            const codeDesc = describeExitCode(code);
+            const codeInfo = codeDesc ? ` (${codeDesc})` : '';
+            console.error(`[CTCAligner] Process exited with code ${code}${codeInfo}${signalInfo}`);
             Sentry.addBreadcrumb({
               category: 'ctc-aligner',
-              message: `Process exited with code ${code}${signalInfo}`,
+              message: `Process exited with code ${code}${codeInfo}${signalInfo}`,
               level: 'error',
               data: { stderr: stderr.substring(0, 2000), stdout: stdout.substring(0, 2000) },
             });
             resolve({
               success: false,
-              error: `Aligner exited with code ${code}${signalInfo}: ${stderr}`,
+              error: `Aligner exited with code ${code}${codeInfo}${signalInfo}: ${stderr}`,
             });
             return;
           }

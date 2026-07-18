@@ -13,7 +13,7 @@ import { t } from '../i18n.ts';
 import * as Sentry from '@sentry/electron/main';
 import { getBinaryPath } from '../utils/paths.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
-import { buildSpawnArgs } from '../utils/shell.ts';
+import { buildSpawnArgs, describeExitCode, isDllNotFoundExitCode } from '../utils/shell.ts';
 
 export interface VideoInfo {
   id: string;
@@ -739,7 +739,14 @@ class YtDlpService {
         if (trackKey) this.activeParseProcesses.delete(trackKey);
         if (killed) return; // Already rejected by timeout
         if (code === 0) resolve(stdout);
-        else reject(new Error(stderr || `yt-dlp exited with code ${code}`));
+        else {
+          const codeDesc = describeExitCode(code);
+          reject(
+            new Error(
+              stderr || `yt-dlp exited with code ${code}${codeDesc ? ` (${codeDesc})` : ''}`
+            )
+          );
+        }
       });
 
       proc.on('error', (err) => {
@@ -1260,7 +1267,10 @@ class YtDlpService {
         // through as 'unknown', and the noise drowns out genuine binary
         // failures (ENOENT/EACCES/non-zero exit) that we *do* want to see.
         if (!error?.isTimeout) {
-          Sentry.captureException(error, { tags: { action: 'ytdlp-version' } });
+          Sentry.captureException(error, {
+            tags: { action: 'ytdlp-version', probe_reason: 'spawn-or-exit-error' },
+            extra: { binaryPath: this.binaryPath, errorCode: error.code },
+          });
         }
       }
     }
@@ -1280,9 +1290,22 @@ class YtDlpService {
         );
         Sentry.captureMessage('QuickJS version parse failed', {
           level: 'warning',
+          tags: {
+            probe_reason: isDllNotFoundExitCode(result.status)
+              ? 'dll-not-found'
+              : result.error
+                ? 'spawn-error'
+                : result.status !== 0
+                  ? 'nonzero-exit'
+                  : output.trim().length > 0
+                    ? 'no-version-string'
+                    : 'empty-output',
+            exit_code: String(result.status),
+          },
           extra: {
-            output: output.trim().slice(0, 500),
+            output: output.trim().slice(0, 1000),
             exitCode: result.status,
+            exitCodeDescription: describeExitCode(result.status),
             signal: result.signal,
             error: result.error?.message,
             binaryPath: this.quickjsPath,

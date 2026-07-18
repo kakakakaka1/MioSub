@@ -5,7 +5,12 @@ import { spawn, type ChildProcess } from 'child_process';
 import * as Sentry from '@sentry/electron/main';
 import { t } from '../i18n.ts';
 import { getBinaryPath } from '../utils/paths.ts';
-import { buildSpawnArgs, ensureAsciiSafePath, getAsciiSafeTempPath } from '../utils/shell.ts';
+import {
+  buildSpawnArgs,
+  describeExitCode,
+  ensureAsciiSafePath,
+  getAsciiSafeTempPath,
+} from '../utils/shell.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
 import { detectBinaryVersion } from '../utils/version.ts';
 import { extractAudioFromVideo } from './ffmpegAudioExtractor.ts';
@@ -222,9 +227,17 @@ export class VocalSeparator {
       if (stderr.length > 0) console.log(`[VocalSeparator] stderr:\n${stderr}`);
 
       if (exitCode !== 0) {
-        const error = new Error(`Vocal separation failed (exit code ${exitCode}): ${stderr}`);
+        const codeDesc = describeExitCode(exitCode);
+        const error = new Error(
+          `Vocal separation failed (exit code ${exitCode}${codeDesc ? ` (${codeDesc})` : ''}): ${stderr}`
+        );
         Sentry.captureException(error, {
-          extra: { exitCode, stdout_full: stdout },
+          extra: {
+            exitCode,
+            exitCodeDescription: codeDesc,
+            stdout_full: stdout,
+            stderr_full: stderr,
+          },
         });
 
         throw error;

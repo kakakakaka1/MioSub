@@ -4,7 +4,7 @@ import { app } from 'electron';
 
 import { getBinaryPath } from '../utils/paths.ts';
 import { ExpectedError } from '../utils/expectedError.ts';
-import { ensureAsciiSafePath, getAsciiSafeTempPath } from '../utils/shell.ts';
+import { describeExitCode, ensureAsciiSafePath, getAsciiSafeTempPath } from '../utils/shell.ts';
 
 const checkBinaryExistence = (name: string, pathStr: string) => {
   if (!app.isPackaged && !fs.existsSync(pathStr)) {
@@ -565,8 +565,12 @@ export async function extractMultipleAudioSegments(
     activeAudioCommands.add(procWrapper);
     registerJob(jobId, { command: procWrapper, outputPath, isCancelled: false });
 
+    // Keep a rolling tail of stderr so a failure error carries the actual
+    // FFmpeg diagnostics (FFmpeg logs everything to stderr, including progress).
+    let stderrTail = '';
     proc.stderr.on('data', (data: Buffer) => {
       const line = data.toString();
+      stderrTail = (stderrTail + line).slice(-2000);
       if (onLog) {
         const lowerLine = line.toLowerCase();
         if (
@@ -594,7 +598,12 @@ export async function extractMultipleAudioSegments(
         resolve(outputPath);
       } else {
         removeOutputFile(outputPath);
-        reject(new Error(`FFmpeg concat extraction failed with code ${code}`));
+        const codeDesc = describeExitCode(code);
+        reject(
+          new Error(
+            `FFmpeg concat extraction failed with code ${code}${codeDesc ? ` (${codeDesc})` : ''}: ${stderrTail.trim()}`
+          )
+        );
       }
     });
 
